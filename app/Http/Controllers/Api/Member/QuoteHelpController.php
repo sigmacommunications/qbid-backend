@@ -60,43 +60,55 @@ class QuoteHelpController extends BaseController
 
     public function store(Request $request)
     {
-        try
-        {
+        try {
             $data = QuoteHelp::create([
                 'user_id' => Auth::user()->id,
                 'service_preference' => $request->service_preference,
             ]);
+
             $fullName = Auth::user()->first_name . ' ' . Auth::user()->last_name;
 
             $users = User::whereJsonContains('expertise', $request->service_preference)->get();
-            if($users)
-            {
-                foreach($users as $user)
-                {
+            if ($users->count() > 0) {
+                foreach ($users as $user) {
                     $fcmToken = $user->device_token;
+
+                    // Agar token empty/null ho to skip kar do
+                    if (!$fcmToken) {
+                        continue;
+                    }
+
                     Notification::create([
-                        'user_id' =>  $user->id,
-                        'quote_id' =>  $data->id,
-                        'service_preference' =>  $request->service_preference,
+                        'user_id' => $user->id,
+                        'quote_id' => $data->id,
+                        'service_preference' => $request->service_preference,
                         'title' => 'Quote Help',
-                        'body' => 'MR '. $fullName .' is looking for an '. $request->service_preference .' expert to help him',
+                        'body' => 'MR ' . $fullName . ' is looking for an ' . $request->service_preference . ' expert to help him',
                     ]);
-                    // $service_preference = $request->service_preference;
 
                     $title = 'Quote Help';
-                    $body = 'MR '. $fullName .' is looking for an '. $request->service_preference .' expert to help him';
-                    $response = $this->firebaseService->sendNotification($fcmToken, $title, $body);
+                    $body = 'MR ' . $fullName . ' is looking for an ' . $request->service_preference . ' expert to help him';
+
+                    try {
+                        $response = $this->firebaseService->sendNotification($fcmToken, $title, $body);
+
+                        // Agar response 404 ya invalid token ka ho to us user ko skip kar do
+                        if (isset($response['error']) && $response['error'] == 'NotFound') {
+                            continue;
+                        }
+                    } catch (\Exception $ex) {
+                        // Agar koi issue aaye (invalid token etc) to skip kar do
+                        continue;
+                    }
                 }
             }
-            // return User::where('role','Qbid Negotiator')->where('expertise', 'like', "%$service_preference%")->get();
 
-			return response()->json(['success'=>true,'message'=>'Created Successfully']);
-		}
-		catch(\Eception $e)
-		{
-			return $this->sendError($e->getMessage());
-		}
+            return response()->json(['success' => true, 'message' => 'Created Successfully']);
+        } catch (\Exception $e) {
+            return $this->sendError($e->getMessage());
+        }
     }
+
     /**
      * Display the specified resource.
      *
